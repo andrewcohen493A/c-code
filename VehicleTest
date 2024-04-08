@@ -1,0 +1,260 @@
+using DiscussionLibraryCohen;
+using DisscussionMvcCohen.Controllers;
+using DisscussionMvcCohen.Models;
+using DisscussionMvcCohen.ViewModels;
+using Microsoft.AspNetCore.Mvc;
+using Moq;
+using Xunit.Sdk;
+using static DiscussionLibraryCohen.Vehicle;
+
+namespace DiscussionTestCohen
+{
+    public class VehicleTest
+    {
+        private Mock<IVehicleRepo> mockVehicleRepo;
+        private Mock<IAppUserRepo> mockAppUserRepo;
+        private VehicleController vehicleController;
+
+        public VehicleTest() 
+        {
+            mockVehicleRepo = new Mock<IVehicleRepo>();
+            mockAppUserRepo= new Mock<IAppUserRepo>();
+            vehicleController = new VehicleController(mockVehicleRepo.Object, mockAppUserRepo.Object);
+            mockVehicleRepo.Setup(m => m.GetAllVehicleMakes()).Returns(new List<VehicleMake>());
+            mockVehicleRepo.Setup(m => m.GetAllVehicleModels()).Returns(new List<VehicleModel>());
+
+        }
+        [Fact]
+        public void ShouldAddVehicle()
+        {
+            string mockSupervisorID = "S001";
+            mockAppUserRepo.Setup(m => m.GetUserID()).Returns(mockSupervisorID);
+            //Arrange
+            AddVehicleViewModel viewModel = new AddVehicleViewModel 
+            { 
+                VIN = "V001", 
+                DatePurchased = DateTime.Now.AddYears(-1), 
+                VehicleMakeID = 1, 
+                VehicleModelID = 2, 
+                Year = 2022, 
+                Mileage = 150000
+            };
+
+            int mockVehicleID = 101;
+            Vehicle mockVehicle = null;
+            mockVehicleRepo.Setup(m => m.AddVehicle(It.IsAny<Vehicle>()))
+                .Returns(mockVehicleID)
+                .Callback<Vehicle>(addedVehicle => mockVehicle = addedVehicle);
+            //Act
+            vehicleController.AddVehicle(viewModel);
+
+            //Assert
+            mockVehicleRepo.Verify(m => m.AddVehicle(It.IsAny<Vehicle>()), Times.Once(), "Add Vehicle not called once");
+
+            Assert.NotNull(mockVehicle);
+            Assert.Equal(viewModel.VIN, mockVehicle.VIN);
+            Assert.Equal(VehicleStatusOptions.Running, mockVehicle.VehicleStatus);
+            Assert.Equal(mockSupervisorID, mockVehicle.VehicleAddedBySupervisorID);
+
+        }
+
+
+        [Fact]//Fail quickly (Red, Green) Test driven dev
+        public void ShouldCalculateVehicleAge()
+        {
+            //VehiclePurchasDate: 9/8/2012 (10 years)
+            //what i expect
+            int expectedVehicleAge = 10;
+            int actualVehicleAge = 0;
+            
+            //call CalculateAge()
+            //need an object(construct the object)
+            string vin = "V001";
+           
+            DateTime datePurchased = DateTime.Now.AddYears(-10); //class example
+           
+            Vehicle vehicle = new Vehicle(vin, datePurchased);
+
+            actualVehicleAge = vehicle.CalculateAge();
+
+           
+            //Vehicle vh = new Vehicle(DateTime.Parse("2012-09-08"));//create a constructor
+
+            //actualVehicleAge = vh.CalculateAge();
+
+            Assert.Equal(expectedVehicleAge, actualVehicleAge);
+            
+        }
+
+        [Fact]
+        public void ShouldCalculateRetiredVehicle()
+        {
+            //VehiclePurchasDate: 9/8/2012 (10 years)
+            //what i expect
+            int expectedVehicleAge = 20;
+            int actualVehicleAge = 0;
+
+            int expectedMilage = 100000;
+            int actualMilage = 0;
+
+            bool expectedVehicleRetired = true;
+            bool actualVehicleRetired = false;
+
+            //call CalculateAge()
+            //need an object(construct the object)
+            string vin = "V001";
+
+            DateTime datePurchased = new DateTime(2003, 8, 9); //class example
+
+            Vehicle vehicle = new Vehicle(vin, datePurchased);
+
+            actualVehicleAge = vehicle.CalculateAge();
+
+            actualVehicleRetired = vehicle.CalculateRetired();
+
+            
+            Assert.Equal(expectedVehicleAge, actualVehicleAge);
+            Assert.Equal(expectedVehicleRetired, actualVehicleRetired);
+
+        }
+        [Fact]
+        public void ShouldSearchForVehicleByMilage()
+        {
+            //AAA testing
+            //A1 Arrange setting up
+            //Mock the interface
+
+            //Mock<IVehicleRepo> mockVehicleRepo = new Mock<IVehicleRepo>();
+            mockVehicleRepo.Setup(m => m.GetAllVehicleMakes()).Returns(new List<VehicleMake>());
+            mockVehicleRepo.Setup(m => m.GetAllVehicleModels()).Returns(new List<VehicleModel>());
+            
+            List<Vehicle> mockVehicleData = CreateMockData();
+            mockVehicleRepo.Setup(m => m.GetAllVehicle()).Returns(mockVehicleData);
+
+            int expectedNumberOfVehicle = 3;
+
+            //VehicleController vehicleController = new VehicleController(mockVehicleRepo.Object);
+
+            //A2 Act method with logic
+            SearchVehiclesViewModel viewModel = new SearchVehiclesViewModel { searchMileage=150000, searchPurchaseDate=null, searchServicedDate=null };
+            //int? searchMil = 150000;
+            //DateTime? inputSearchPurchasedDate = new DateTime(2012, 1, 1);
+
+            ViewResult viewResult = vehicleController.SearchVehicles(viewModel) as ViewResult;
+
+            SearchVehiclesViewModel resultModel = viewResult.Model as SearchVehiclesViewModel;
+            List<Vehicle> actualResult = resultModel.SearchResult;
+
+            int actualNumberOfVehicle = actualResult.Count;
+
+            //A3 Assert
+            Assert.Equal(expectedNumberOfVehicle, actualNumberOfVehicle);
+        }
+        [Fact]
+        public void ShouldSearchForVehicleByMilageAndDatePurchased()
+        {
+            //AAA testing
+            //A1 Arrange setting up
+            //Mock the interface
+
+
+            Mock<IVehicleRepo> mockVehicleRepo = new Mock<IVehicleRepo>();
+            mockVehicleRepo.Setup(m => m.GetAllVehicleMakes()).Returns(new List<VehicleMake>());
+            mockVehicleRepo.Setup(m => m.GetAllVehicleModels()).Returns(new List<VehicleModel>());
+
+            List<Vehicle> mockVehicleData = CreateMockData();
+            mockVehicleRepo.Setup(m => m.GetAllVehicle()).Returns(mockVehicleData);
+
+            int expectedNumberOfVehicle = 2;
+            VehicleController vehicleController = new VehicleController(mockVehicleRepo.Object, mockAppUserRepo.Object);
+
+            //A2 Act method with logic
+            SearchVehiclesViewModel viewModel = new SearchVehiclesViewModel { searchMileage = 150000, searchPurchaseDate = new DateTime(2012, 12, 1), searchServicedDate = null };
+            //int? searchMil = 150000;
+            //DateTime? inputSearchPurchasedDate = new DateTime(2012, 1, 1);
+
+            ViewResult viewResult = vehicleController.SearchVehicles(viewModel) as ViewResult;
+
+            SearchVehiclesViewModel resultModel = viewResult.Model as SearchVehiclesViewModel;
+            List<Vehicle> actualResult = resultModel.SearchResult;
+
+            int actualNumberOfVehicle = actualResult.Count;
+
+            //A3 Assert
+            Assert.Equal(expectedNumberOfVehicle, actualNumberOfVehicle);
+        }
+        
+        [Fact]
+        public void ShouldSearchVehicleByDateServiced()
+        {
+           // Mock<IVehicleRepo> mockVehicleRepo = new Mock<IVehicleRepo>();
+
+            List<Vehicle> mockVehicleDate = CreateMockData();
+
+            mockVehicleRepo.Setup(m => m.GetAllVehicle()).Returns(mockVehicleDate);
+            mockVehicleRepo.Setup(m => m.GetAllVehicleMakes()).Returns(new List<VehicleMake>());
+            mockVehicleRepo.Setup(m => m.GetAllVehicleModels()).Returns(new List<VehicleModel>());
+
+            int expectedNumberOfVehicle = 2;
+
+            //VehicleController vehicleController = new VehicleController(mockVehicleRepo.Object);
+
+            SearchVehiclesViewModel viewModel = new SearchVehiclesViewModel { searchMileage = null, searchPurchaseDate = null, searchServicedDate = new DateTime(2022, 6, 1) };
+            //int? searchMil = 150000;
+            //DateTime? inputSearchPurchasedDate = new DateTime(2012, 1, 1);
+
+            ViewResult viewResult = vehicleController.SearchVehicles(viewModel) as ViewResult;
+
+            SearchVehiclesViewModel resultModel = viewResult.Model as SearchVehiclesViewModel;
+            List<Vehicle> actualResultList = resultModel.SearchResult;
+
+            int actualNumberOfVehicles = actualResultList.Count;
+
+            Assert.Equal(expectedNumberOfVehicle,actualNumberOfVehicles);
+        }
+
+        public List<Vehicle> CreateMockData()
+        {
+            DateTime datePurchased = new DateTime(2011, 05, 01);
+            List<Vehicle> mockData = new List<Vehicle>();
+            Vehicle vehicle = new Vehicle { VIN = "V001", Mileage = 175000, DatePurchased = datePurchased };
+            mockData.Add(vehicle);
+
+
+            DateTime dateServiced = new DateTime(2022, 9, 1);
+            ServiceRequest serviceRequest = new ServiceRequest {DateServiced = dateServiced};//add dates
+            serviceRequest.Vehicle = vehicle;
+            vehicle.VehicleServiceRequest.Add(serviceRequest);
+
+           mockData.Add(vehicle);
+
+
+            datePurchased = new DateTime(2010, 01, 01);
+            vehicle = new Vehicle { VIN = "V002", Mileage = 149000, DatePurchased = datePurchased };
+            
+
+            dateServiced = new DateTime(2022, 3, 1);
+            serviceRequest = new ServiceRequest { DateServiced = dateServiced };//add dates
+            serviceRequest.Vehicle = vehicle;
+            vehicle.VehicleServiceRequest.Add(serviceRequest);
+            mockData.Add(vehicle);
+
+
+            datePurchased = new DateTime(2019, 01, 01);
+            vehicle = new Vehicle { VIN = "V003", Mileage = 150000, DatePurchased = datePurchased };
+
+
+            dateServiced = new DateTime(2022, 4, 1);
+            serviceRequest = new ServiceRequest { DateServiced = dateServiced };//add dates
+            serviceRequest.Vehicle = vehicle;
+            vehicle.VehicleServiceRequest.Add(serviceRequest);
+            mockData.Add(vehicle);
+
+
+            return mockData;
+        }
+
+    }
+
+
+}
