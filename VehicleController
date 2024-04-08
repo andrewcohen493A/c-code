@@ -1,0 +1,183 @@
+using DiscussionLibraryCohen;
+using DisscussionMvcCohen.Models;
+using DisscussionMvcCohen.ViewModels;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
+using System.Security.Claims;
+
+namespace DisscussionMvcCohen.Controllers
+{
+    public class VehicleController : Controller
+    {
+        //Injecting IVehicleRepo into Vehicle Controller
+        //Instance Variable
+        private IVehicleRepo _vehicleRepo;
+        private IAppUserRepo _appUserRepo;
+
+        public VehicleController(IVehicleRepo vehicleRepo, IAppUserRepo appUserRepo)
+        {
+            _vehicleRepo = vehicleRepo;
+            _appUserRepo = appUserRepo;
+        }
+
+        [HttpGet]
+        public IActionResult EditVehicle(int vehicleID)
+        {
+            CreateDownList();
+            Vehicle vehicle = _vehicleRepo.FindVehicle(vehicleID);
+            return View(vehicle);
+        }
+        [HttpPost]
+        public IActionResult EditVehicle(Vehicle modifiedVehicle)
+        {
+
+            if (ModelState.IsValid)
+            {
+                _vehicleRepo.UpdateVehicle(modifiedVehicle);
+                return RedirectToAction("SearchVehicls");
+            }
+            else
+            {
+                CreateDownList();
+                return View(modifiedVehicle);
+            }
+
+        }
+
+        [HttpGet]
+        public IActionResult AddVehicle()
+        {
+            CreateDownList();
+            return View();
+        }
+        [HttpPost]
+        public IActionResult AddVehicle(AddVehicleViewModel viewModel)
+        {
+            string supervisorID = _appUserRepo.GetUserID();/*User.FindFirstValue(ClaimTypes.NameIdentifier);*/
+
+            if(ModelState.IsValid)
+            {
+                Vehicle vehicle = new Vehicle(viewModel.VIN, 
+                    viewModel.DatePurchased.Value, 
+                    viewModel.VehicleMakeID.Value, 
+                    viewModel.VehicleModelID.Value, 
+                    viewModel.Year.Value,
+                    viewModel.Mileage.HasValue ? viewModel.Mileage.Value : null,
+                    supervisorID);
+
+                int vehicleID = _vehicleRepo.AddVehicle(vehicle);
+                if(vehicleID == 0)
+                {
+                    ModelState.AddModelError("VINRepeatedError", "VIN cannot be repeated");
+                    CreateDownList();
+                    return View(viewModel);
+
+                }
+                
+                return RedirectToAction("SearchVehicles");
+
+            }
+            else //when there are errors
+            {
+                CreateDownList();
+                return View(viewModel);
+            }
+
+            
+        }
+        public JsonResult GetModelsForMake(int? makeID)
+        {
+            //List<Vehicle> allVehicles = _vehicleRepo.GetAllVehicle();
+
+            List<VehicleModel> allVehicleModels = _vehicleRepo.GetAllVehicleModels();
+
+            if(makeID != null)
+            {
+                allVehicleModels = allVehicleModels.Where(v => v.VehicleMakeID == makeID).ToList();
+            }
+
+            //List<int> selectedModels = allVehicleModels.Select(v => v.VehicleModelID).Distinct().ToList();
+
+            return Json(new SelectList (allVehicleModels, "VehicleModelID", "VehicleModelName"));
+
+        }
+
+
+
+        public void CreateDownList()
+        {
+
+            
+            ViewData["AllMakes"] = new SelectList
+                (_vehicleRepo.GetAllVehicleMakes(), "VehicleMakeID", "VehicleMakeName");
+
+           
+            ViewData["AllModel"] = new SelectList
+                (_vehicleRepo.GetAllVehicleModels(), "VehicleModelID", "VehicleModelName");
+
+        }
+
+        [HttpGet]//to view from server to browser
+        public IActionResult SearchVehicles()
+        {
+            //drop down list goes here
+            CreateDownList();
+
+            SearchVehiclesViewModel viewModel = new SearchVehiclesViewModel();
+            //viewModel.SearchResult = new List<Vehicle>();
+            return View(viewModel);
+        }
+
+
+        [HttpPost]//to send user data
+
+        public IActionResult SearchVehicles(SearchVehiclesViewModel viewModel)
+            /*(int? searchMileage = null, DateTime? searchPurchaseDate = null, DateTime? searchServicedDate = null)*/ //Interface
+
+        {
+            CreateDownList();
+            
+            IEnumerable<Vehicle> allVehicles = _vehicleRepo.GetAllVehicle();
+
+            if(viewModel.searchMileage != null)
+            {
+                allVehicles = allVehicles.Where(a => a.Mileage >= viewModel.searchMileage);
+            }
+            if(viewModel.searchPurchaseDate != null)
+            {
+                allVehicles = allVehicles.Where(a => a.DatePurchased <= viewModel.searchPurchaseDate);
+
+            }
+            if (viewModel.searchServicedDate != null)
+            {
+                allVehicles = allVehicles
+                    .Where(a => a.VehicleServiceRequest
+                    .Any(vsr => vsr.DateServiced >= viewModel.searchServicedDate));
+
+            }
+            if(viewModel.SearchVehicleMakeID.HasValue)
+            {
+                allVehicles = allVehicles.Where(v => v.VehicleMakeID == viewModel.SearchVehicleMakeID);
+            }
+            if (viewModel.SearchVehicleModelID.HasValue)
+            {
+                allVehicles = allVehicles.Where(v => v.VehicleModelID == viewModel.SearchVehicleModelID);
+            }
+            if (viewModel.VehicleStatus.HasValue)
+            {
+                allVehicles = allVehicles.Where(v => v.VehicleStatus == viewModel.VehicleStatus);
+            }
+            viewModel.SearchResult = allVehicles.ToList();
+            return View(viewModel);
+        
+        }
+    
+    
+    
+    }
+
+
+
+
+
+}
