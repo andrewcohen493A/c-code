@@ -1,0 +1,28 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+namespace DiscussionLibraryCohen
+{
+    public class Mechanic : AppUser
+    {
+        
+        public List<ServiceRequest> ServiceRequestsWorkedOn { get; set; }
+        public List<ServiceRequestNotes> MechanicNotes { get; set; }
+
+        public Mechanic(string fullName, string email, string phoneNumber, string password)
+            : base(fullName, email, phoneNumber, password)
+        {
+            ServiceRequestsWorkedOn = new List<ServiceRequest>();
+            MechanicNotes = new List<ServiceRequestNotes>();
+        }
+
+        public Mechanic()
+        {
+            ServiceRequestsWorkedOn = new List<ServiceRequest>();
+            MechanicNotes = new List<ServiceRequestNotes>();
+        }
+   
+    }
+}
