@@ -1,0 +1,266 @@
+using DiscussionLibraryCohen;
+using DisscussionMvcCohen.Models;
+using DisscussionMvcCohen.ViewModels;
+using Microsoft.AspNetCore.Mvc;
+using static System.Net.Mime.MediaTypeNames;
+using Microsoft.AspNetCore.Mvc.Rendering;
+using DisscussionMvcCohen.Services;
+using Microsoft.AspNetCore.Identity.UI.Services;
+using static DiscussionLibraryCohen.ServiceRequest;
+using Microsoft.AspNetCore.Authorization;
+
+namespace DisscussionMvcCohen.Controllers
+{
+    public class ServiceRequestController : Controller
+    {
+        private IServiceRequestRepo _serviceRequestRepo;
+        private IAppUserRepo _appUserRepo;
+        private IVehicleRepo _vehicleRepo;
+        private IServiceRequestEmailSender _serviceRequestEmailSender;
+
+        public ServiceRequestController(IServiceRequestRepo serviceRequest, IAppUserRepo appUserRepo, IVehicleRepo vehicleRepo, IServiceRequestEmailSender serviceRequestEmailSender)
+        {
+            _serviceRequestRepo = serviceRequest;
+            _appUserRepo = appUserRepo;
+            _vehicleRepo = vehicleRepo;
+           _serviceRequestEmailSender = serviceRequestEmailSender;
+        }
+        public void CreateDownList()
+        {
+            List<Vehicle> allVehicles = _vehicleRepo.GetAllVehicle().ToList();
+            var allVehiclesForDDL = allVehicles.Select(a => new 
+            { 
+                a.VehicleID,
+                VehicleDetails = a.VIN + " - " + a.VehicleMake.VehicleMakeName + " - " + a.VehicleModel.VehicleModelName + " - " + a.Year
+            
+            });
+
+            ViewData["AllVehicle"] = new SelectList(allVehiclesForDDL, "VehicleID", "VehicleDetails");
+            ViewData["AllMechanic"] = new SelectList(_appUserRepo.GetMechanics(), "Id", "FullName");
+        }
+
+        [HttpGet]
+        public IActionResult MakeServiceRequest() 
+        {
+            CreateDownList();
+            return View();
+
+        }
+        [HttpPost]
+        public IActionResult MakeServiceRequest(MakeServiceRequestViewModel viewModel) 
+        {
+            string officerID = _appUserRepo.GetUserID();
+
+            if(_serviceRequestRepo.HasTheRequestBeenMade(viewModel.VehicleID))
+            { 
+                ModelState.AddModelError("RepeatedServiceError", "Service has already been made for this vehicle ");
+            }
+
+            if (ModelState.IsValid)
+            {
+                ServiceRequest serviceRequest = new ServiceRequest
+                    (
+                    DateTime.Now,
+                    viewModel.VehicleID,
+                    viewModel.Description,
+                    officerID
+
+                    );
+
+                SupervisorOfficer supervisorOfficer = _appUserRepo.GetOfficerSupervisor(officerID);
+                serviceRequest.SupervisorID = supervisorOfficer.SupervisorID;
+                int serviceRequestID = this._serviceRequestRepo.GetServiceRequestsMake(serviceRequest);
+                Supervisor supervisor = _appUserRepo.GetSupervisor(supervisorOfficer.SupervisorID);
+                string subject = "New service Request";
+                string message = $"View your new service request";
+
+                _serviceRequestEmailSender.SendServiceRequestEmail("ServiceRequest/GetAllUndecidedRequestsForSupervisor",
+                    supervisor.Email, subject, message);
+
+
+
+               // string callbackUrl =
+               //     Url.Action("GetAllUndecidedRequestForSupervisor", "ServiceRequest", new {ServiceRequestId = serviceRequestID}, Request.Scheme, Request.Host.Value);
+
+               
+               
+               // _emailSender.SendEmailAsync(supervisor.Email, subject, message).Wait();
+                
+
+                return RedirectToAction("SearchServiceRequest");
+
+            }
+            else
+            {
+                CreateDownList();
+                return View(viewModel);
+            }
+
+
+
+
+        }
+        [Authorize(Roles = "Mechanic")]
+        public IActionResult GetAllUnservicedRequestFoMechanic()
+        {
+            CreateDownList();
+            string mechanicID = _appUserRepo.GetUserID();
+
+            List<ServiceRequest> unserviceRequest = _serviceRequestRepo.GetAllUnservicedRequestFoMechanic(mechanicID);
+
+            return View(unserviceRequest);
+        }
+        [Authorize(Roles = "Supervisor")]
+        public IActionResult GetAllUndecidedRequestForSupervisor()
+        {
+            CreateDownList();
+            string supervisorID = _appUserRepo.GetUserID();
+
+           List<ServiceRequest> undecidedServiceRequest = _serviceRequestRepo.GetAllUndecidedRequestForSupervisor(supervisorID);
+
+            return View(undecidedServiceRequest);
+        }
+         [Authorize(Roles = "Supervisor")]
+        public IActionResult SupervisorNotes()
+        {
+            CreateDownList();
+            string supervisorID = _appUserRepo.GetUserID();
+
+           List<ServiceRequest> supervisorNotes = _serviceRequestRepo.SupervisorNotes(supervisorID);
+
+            return View(supervisorNotes);
+        }
+        [HttpPost]
+        public IActionResult MakeSupervisorNotes(List<string> ServiceRequestIds, List<string> SupvisorNotes)
+        {
+            string supervisorID = _appUserRepo.GetUserID();
+            int numOfDecisions = ServiceRequestIds.Count();
+
+            for(int i = 0; i < numOfDecisions; i++)
+            {
+                int serviceRequestID = Convert.ToInt32(ServiceRequestIds[i]);
+                ServiceRequest serviceRequest = _serviceRequestRepo.GetAllServiceRequests(serviceRequestID);
+
+                if (SupvisorNotes[i] != null)
+                {
+                    ServiceRequestNotes requestNotes = new ServiceRequestNotes(SupvisorNotes[i], serviceRequestID,null, supervisorID);
+                    _serviceRequestRepo.AddNote(requestNotes);
+                }
+                _serviceRequestRepo.UpdateServiceRequest(serviceRequest);
+
+
+
+
+
+            }
+            return RedirectToAction("SearchServiceRequest");
+        }
+       
+
+        [HttpPost]
+        public IActionResult MakeMechanicDecisionsOnRequests(List<string> ServiceRequestIds, List<string> Decisions, List<string> MechanicNotes)
+        {
+            string mechanicID = _appUserRepo.GetUserID();
+            int numberOfDecisions = ServiceRequestIds.Count;
+
+            for (int i = 0; i < numberOfDecisions; i++)
+            {
+               int serviceRequestId = Convert.ToInt32(ServiceRequestIds[i]);
+                ServiceRequest serviceRequest = _serviceRequestRepo.GetAllServiceRequests(serviceRequestId);
+
+               
+                    
+                
+                
+                    Vehicle.VehicleStatusOptions mechanicDecision =
+                        (Vehicle.VehicleStatusOptions)Convert.ToInt32(Decisions[i]);
+
+                if(mechanicDecision == Vehicle.VehicleStatusOptions.Running)
+                {
+                    serviceRequest.SupervisorDecision = SupervisorDecisionOptions.Complete;
+                    serviceRequest.DateServiced= DateTime.Now;
+
+                    Vehicle vehicle = _vehicleRepo.FindVehicle(serviceRequest.VehicleID);
+                    vehicle.VehicleStatus = Vehicle.VehicleStatusOptions.Running;
+                    _vehicleRepo.UpdateVehicle(vehicle);
+                }
+                if (MechanicNotes[i] != null)
+                {
+                    ServiceRequestNotes serviceRequestNotes = new ServiceRequestNotes(MechanicNotes[i], serviceRequestId, mechanicID, null);
+                    //serviceRequest.ServiceRequestNotes.Add(serviceRequestNotes);
+                    _serviceRequestRepo.AddNote(serviceRequestNotes);
+                }
+                _serviceRequestRepo.UpdateServiceRequest(serviceRequest);
+                
+            }
+
+
+            return RedirectToAction("SearchServiceRequest");
+        }
+       
+        [HttpPost]
+        public IActionResult MakeDecisionsOnRequests(List<string> ServiceRequestIds, List<string> Decisions, List<string> AssignMechanicsID)
+        {
+            int numberOfDecisions = ServiceRequestIds.Count;
+
+            for (int i = 0; i < numberOfDecisions; i++)
+            {
+                if (Decisions[i] != null)
+                {
+                    SupervisorDecisionOptions supervisorDecision = 
+                        (SupervisorDecisionOptions)Convert.ToInt32(Decisions[i]);
+                    int serviceRequestId = Convert.ToInt32(ServiceRequestIds[i]);
+                    string mechanicId = AssignMechanicsID[i];
+                    MakeDecisionOnOneRequest(serviceRequestId, supervisorDecision, mechanicId);
+                }
+            }
+
+
+            return RedirectToAction("SearchServiceRequest");
+        }
+
+        public void MakeDecisionOnOneRequest(int serviceRequestId, SupervisorDecisionOptions decision, string mechanicId)
+        {
+            ServiceRequest serviceRequest = _serviceRequestRepo.GetAllServiceRequests(serviceRequestId);
+            serviceRequest.SupervisorDecision = decision;
+            serviceRequest.DateSupervisorDecision = DateTime.Now;
+            if(decision == SupervisorDecisionOptions.Approved)
+            {
+                serviceRequest.MechanicID = mechanicId;
+                serviceRequest.SupervisorDecision = SupervisorDecisionOptions.InService;
+                Vehicle vehicle = _vehicleRepo.FindVehicle(serviceRequest.VehicleID);
+                vehicle.VehicleStatus = Vehicle.VehicleStatusOptions.BeingServiced;
+                _vehicleRepo.UpdateVehicle(vehicle);
+            }
+            _serviceRequestRepo.UpdateServiceRequest(serviceRequest);
+            
+        }
+
+       
+        [HttpGet]
+        public IActionResult SearchServiceRequest()
+        {
+            CreateDownList();
+            SearchServiceRequestsViewModel sm = new SearchServiceRequestsViewModel();
+            return View(sm);
+        }
+
+        [HttpPost]
+        public IActionResult SearchServiceRequest(SearchServiceRequestsViewModel viewModel)
+        {
+           
+            List<ServiceRequest> allServiceRequest = _serviceRequestRepo.GetServiceRequests();
+
+            if(viewModel.SearchVehicleID != null)
+            {
+                allServiceRequest = allServiceRequest.Where(sr => sr.VehicleID == viewModel.SearchVehicleID).ToList();
+
+            }
+            viewModel.SearchResult = allServiceRequest;
+            return View(viewModel);
+
+        }
+    
+    }
+
+}
