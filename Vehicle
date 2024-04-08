@@ -1,0 +1,109 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Linq;
+using System.Text;
+
+namespace DiscussionLibraryCohen
+{
+
+    public class Vehicle
+    {
+        public int VehicleID { get; set; }
+        //attribute or instance or field
+        //private int_vehicleId;
+
+        public string VIN { get; set; }
+
+        public DateTime DatePurchased { get; set; }
+
+        public int VehicleMakeID { get; set; }
+        public int VehicleModelID { get; set; }
+        [ForeignKey("VehicleMakeID")]
+        public VehicleMake? VehicleMake { get; set; }
+
+        [ForeignKey("VehicleModelID")]
+        public VehicleModel? VehicleModel { get; set; }
+       
+        public string? VehicleAddedBySupervisorID { get; set; }
+        [ForeignKey("VehicleAddedBySupervisorID")]
+        public Supervisor? VehicleAddedBySupervisor {get; set;}
+
+        public DateTime? VehicleAddedDateTime { get; set; }
+
+        public int Year { get; set; }
+
+        public int? Mileage { get; set; }
+
+        public VehicleStatusOptions VehicleStatus {get; set;}
+
+        public List<ServiceRequest> VehicleServiceRequest { get; set; }
+        
+        public string FindLastDateServiced()
+        {
+            string lastDate = null;
+            lastDate = this.VehicleServiceRequest.Max(vsr => vsr.DateServiced).Value.ToShortDateString();
+            return lastDate;
+        }
+
+        public int CalculateAge()
+        {
+            int age = DateTime.Now.Year - DatePurchased.Year;
+            return age;
+
+        }
+
+        public Vehicle(string vin, DateTime DtPurch, int makeID, int modelID, 
+            int year, int? mileage = null, string? vehicleAddedBySupervisorID = null)
+        {
+            this.VIN = vin;
+            this.DatePurchased = DtPurch;
+            VehicleMakeID = makeID ;
+            VehicleModelID = modelID ;  
+            Year = year;
+            Mileage = mileage;
+            VehicleAddedBySupervisorID = vehicleAddedBySupervisorID;
+            VehicleAddedDateTime = DateTime.Now;
+            VehicleServiceRequest = new List<ServiceRequest>();
+        }
+        public Vehicle(string vin, DateTime DtPurch, int? mileage = null)
+        {
+            this.VIN = vin;
+            this.DatePurchased = DtPurch;
+            Mileage = mileage;
+            VehicleServiceRequest = new List<ServiceRequest>();
+        }
+
+        public Vehicle()
+        {
+            VehicleServiceRequest = new List<ServiceRequest>();
+
+        }
+
+        public bool CalculateRetired()
+        {
+           int age = DateTime.Now.Year - DatePurchased.Year;
+           int mileage = 0;
+            bool VehicleRetireStat = false;
+
+           if (age >= 20 || mileage >= 200000)
+           {
+                VehicleRetireStat = true;
+           }
+           else
+           {
+                VehicleRetireStat = false;
+           }
+
+            return VehicleRetireStat;
+            
+        }
+        //end of vehichle class
+
+        public enum VehicleStatusOptions
+        {
+            Running, BeingServiced, Retired
+        }
+
+    }
+}//end of namespace
